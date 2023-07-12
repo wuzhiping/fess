@@ -1,5 +1,34 @@
 Docker for Fess
 =====
+sudo apt-get update
+sudo apt-get install docker-compose-plugin
+
+第一步 设置vm.max_map_count
+OpenSearch/Elasticsearch needs to set vm.max_map_count to at least 262144. See Important settings.
+
+# linux 教程
+# https://opensearch.org/docs/latest/install-and-configure/install-opensearch/index/#important-settings
+
+# 检查当前值
+cat /proc/sys/vm/max_map_count
+
+# To increase the value, add the following line to /etc/sysctl.conf:
+vm.max_map_count=262144
+
+# Then run sudo sysctl -p to reload. 
+sudo sysctl -p
+
+第二步 run
+
+git clone https://github.com/codelibs/docker-fess.git
+cd docker-fess/compose
+docker compose -f compose.yaml -f compose-opensearch2.yaml up -d
+
+
+UI : http://localhost:8080
+Admin UI: http://localhost:8080/admin/
+账户密码   == 》 admin /admin
+=====
 
 See [Docker Images](https://github.com/codelibs/docker-fess/pkgs/container/fess/versions).
 
