@@ -23,7 +23,7 @@ sudo sysctl -p
 
 git clone https://github.com/codelibs/docker-fess.git
 cd docker-fess/compose
-docker compose -f compose.yaml -f compose-opensearch2.yaml up -d
+docker compose -f compose.yaml -f compose-elasticsearch8.yaml up -d
 
 
 UI : http://localhost:8080
