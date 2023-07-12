@@ -1,6 +1,7 @@
 Docker for Fess
 =====
 sudo apt-get update
+<br>
 sudo apt-get install docker-compose-plugin
 
 第一步 设置vm.max_map_count
