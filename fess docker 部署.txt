@@ -1,0 +1,276 @@
+[官方文档](https://fess.codelibs.org/index.html)
+
+
+
+#### 安装
+
+##### 01 docker 安装
+
+###### 第一步 设置vm.max_map_count
+
+OpenSearch/Elasticsearch needs to set vm.max_map_count to at least 262144. See Important settings.
+
+linux 中（没验证） ==》 
+
+```
+
+# 检查当前值
+cat /proc/sys/vm/max_map_count
+# 设置值
+sysctl -w vm.max_map_count=262144
+vm.max_map_count=262144
+# 重新载入配置
+sudo sysctl -p
+```
+
+window 中 ==》
+
+```
+wsl -d docker-desktop
+sysctl -w vm.max_map_count=262144
+exit
+```
+
+###### 第二步 创建compose 文件
+
+```
+services:
+  fess01:
+    image: ghcr.io/codelibs/fess:14.9.0
+    # build: ./playwright # use Playwright
+    container_name: fess01
+    environment:
+      - "SEARCH_ENGINE_HTTP_URL=http://es01:9200"
+      - "FESS_DICTIONARY_PATH=/usr/share/elasticsearch/config/dictionary/"
+      # - "FESS_PLUGINS=fess-webapp-semantic-search:14.9.0 fess-ds-wikipedia:14.9.0"
+    ports:
+      - "8080:8080"
+    networks:
+      - esnet
+    depends_on:
+      - es01
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+  es01:
+    image: ghcr.io/codelibs/fess-elasticsearch:8.8.2
+    container_name: es01
+    environment:
+      - node.name=es01
+      - discovery.seed_hosts=es01
+      - cluster.initial_master_nodes=es01
+      - cluster.name=fess-es
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - "FESS_DICTIONARY_PATH=/usr/share/elasticsearch/config/dictionary"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65535
+        hard: 65535
+    volumes:
+      - esdata01:/usr/share/elasticsearch/data
+      - esdictionary01:/usr/share/elasticsearch/config/dictionary
+    ports:
+      - 9200:9200
+    networks:
+      - esnet
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+    
+volumes:
+  esdata01:
+    driver: local
+  esdictionary01:
+    driver: local
+    
+networks:
+  esnet:
+    driver: bridge
+
+```
+
+
+
+###### 第二步 run
+
+官方 compose
+
+```
+git clone https://github.com/codelibs/docker-fess.git
+cd docker-fess/compose
+# 二选一执行
+docker compose -f compose.yaml -f compose-opensearch2.yaml up -d
+docker compose --env-file .env.elasticsearch -f compose.yaml -f compose-elasticsearch8.yaml up -d
+
+```
+
+整合 elasticsearch8
+
+```
+docker compose -f compose-fess.yaml up -d
+```
+
+
+
+
+
+#### 其他
+
+##### 整合 minio
+
+###### 第一步 创建 `compose-minio` 文件
+
+```
+services:
+  minio01:
+    image: minio/minio
+    container_name: minio01
+    ports:
+      - "9000:9000"
+      - "50000:50000"
+    environment:
+      - "MINIO_ACCESS_KEY=admin"
+      - "MINIO_SECRET_KEY=12345678"
+    volumes:
+      - minio-data:/data
+    networks:
+      - esnet
+    command: server /data --console-address ":50000" -address ":9000"
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+    driver: local
+    
+networks:
+  esnet:
+    driver: bridge
+
+```
+
+###### 第二步 run
+
+```
+docker compose -f compose-minio.yaml up -d
+```
+
+###### 第三步 准备一下 minio
+
+minio 创建桶， 上传文档，word,pdf  等
+
+###### 第四步 配置fess
+
+1. 安装 `s3`插件
+2. 创建 datastore 爬虫
+
+**Handler Name** 配置
+
+```
+AmazonS3DataStore
+```
+
+**Parameter** 配置
+
+```
+region="111"
+access_key_id=xxxxxx
+secret_key=xxxxx
+endpoint=http://ip:port
+```
+
+**Script** 配置
+
+正常配置
+
+```
+url=object.url
+title=object.key
+content=object.contents
+mimetype=object.mimetype
+filetype=object.filetype
+filename=object.filename
+content_length=object.size
+last_modified=object.last_modified
+```
+
+如果url 为 `http://桶名.ip:port/路径` 使用下面的脚本转换为`http://ip:port/桶名/路径`
+
+```
+url=
+	object.url.replaceFirst( object.bucket_name+ ".","")
+		.substring(
+			0, 
+			object.url.replaceFirst( object.bucket_name+ ".","").indexOf("/",7)
+		) 
+	+ "/" 
+	+ object.bucket_name
+	+ object.url.replaceFirst( object.bucket_name+ ".","")
+		.substring(
+			object.url.replaceFirst( object.bucket_name+ ".","")
+				.indexOf("/",7)
+				)
+
+
+http://桶名.IP:端口/路徑
+http://IP:端口/mimio/桶名/路徑
+```
+
+其他参数
+
+
+| Key | Value |
+| --- | :-- |
+| *object.url* | The URL of the S3 object. |
+| *object.management_url* | The management URL of the S3 Object. |
+| *object.key* | The key of the S3 object. |
+| *object.e_tag* | The ETag of the S3 object. |
+| *object.contents* | The text content of the S3 object. |
+| *object.mimetype* | The mimetype of the S3 object. |
+| *object.filetype* |  The filetype of the S3 object. |
+| *object.filename* | The file name of the S3 object. |
+| *object.size* | The size of the S3 object. |
+| *object.last_modified* | The last time the S3 object was modified. |
+| *object.owner_id* | The owner ID of the S3 object. |
+| *object.owner_display_name* | The display name of the S3 object's owner. |
+| *object.bucket_name* | The bucket name of the S3 object. |
+| *object.creation_date* | The time when the bucket created. |
+
+##### 其他
+
+UI : http://localhost:8080
+Admin UI: http://localhost:8080/admin/
+账户密码   == 》 admin /admin
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
